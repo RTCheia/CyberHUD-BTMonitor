@@ -31,16 +31,24 @@ class HardwareMonitor:
         self.last_net_bytes_recv = 0
 
         # 初始化 Windows 性能计数器 (免管理员权限获取 Intel P核/E核 实时真实睿频)
+        # Intel Core Ultra 7 265KF (Arrow Lake):
+        # 8 个 P核 (0-indexed: 0, 1, 6, 7, 8, 9, 18, 19)
+        # 12 个 E核 (0-indexed: 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17)
+        self.P_CORE_IDS_0 = {0, 1, 6, 7, 8, 9, 18, 19}
+        self.E_CORE_IDS_0 = {i for i in range(20) if i not in self.P_CORE_IDS_0}
+        self.P_CORE_IDS_1 = {i + 1 for i in self.P_CORE_IDS_0}
+        self.E_CORE_IDS_1 = {i + 1 for i in self.E_CORE_IDS_0}
+
         self.pdh_query = None
         self.p_pdh_handles = []
         self.e_pdh_handles = []
         try:
             import win32pdh
             self.pdh_query = win32pdh.OpenQuery()
-            for i in range(8):
+            for i in sorted(self.P_CORE_IDS_0):
                 h = win32pdh.AddCounter(self.pdh_query, f"\\Processor Information(0,{i})\\% Processor Performance")
                 self.p_pdh_handles.append(h)
-            for i in range(8, 20):
+            for i in sorted(self.E_CORE_IDS_0):
                 h = win32pdh.AddCounter(self.pdh_query, f"\\Processor Information(0,{i})\\% Processor Performance")
                 self.e_pdh_handles.append(h)
             win32pdh.CollectQueryData(self.pdh_query)
@@ -128,13 +136,13 @@ class HardwareMonitor:
                         elif stype == "Voltage" and "CPU Core" in sname:
                             data["cpu"]["volt_core_v"] = round(val, 3)
 
-                        # 占用率: P核 (Core 1~8) 与 E核 (Core 9~20)
+                        # 占用率: P核 与 E核 (1-indexed: P核为 1,2,7,8,9,10,19,20，其余为 E核)
                         elif stype == "Load" and sname.startswith("CPU Core #"):
                             try:
                                 core_idx = int(sname.replace("CPU Core #", ""))
-                                if 1 <= core_idx <= 8:
+                                if core_idx in self.P_CORE_IDS_1:
                                     p_loads.append(val)
-                                elif 9 <= core_idx <= 20:
+                                elif core_idx in self.E_CORE_IDS_1:
                                     e_loads.append(val)
                             except ValueError:
                                 pass
@@ -236,7 +244,7 @@ class HardwareMonitor:
             try:
                 import win32pdh
                 e_vals = [win32pdh.GetFormattedCounterValue(h, win32pdh.PDH_FMT_DOUBLE)[1] for h in self.e_pdh_handles]
-                data["cpu"]["e_core_avg_clock_ghz"] = round(3.9 * (sum(e_vals) / len(e_vals) / 100.0), 2)
+                data["cpu"]["e_core_avg_clock_ghz"] = round(3.3 * (sum(e_vals) / len(e_vals) / 100.0), 2)
             except Exception:
                 pass
 
