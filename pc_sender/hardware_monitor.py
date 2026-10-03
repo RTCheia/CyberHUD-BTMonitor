@@ -1,0 +1,257 @@
+import os
+import sys
+import time
+from collections import deque
+
+# 引入 pythonnet CLR
+import clr
+
+DLL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "lhm", "LibreHardwareMonitorLib.dll"))
+if not os.path.exists(DLL_PATH):
+    raise FileNotFoundError(f"未找到 LibreHardwareMonitorLib.dll: {DLL_PATH}")
+
+clr.AddReference(DLL_PATH)
+from LibreHardwareMonitor.Hardware import Computer
+
+class HardwareMonitor:
+    def __init__(self):
+        self.computer = Computer()
+        self.computer.IsCpuEnabled = True
+        self.computer.IsGpuEnabled = True
+        self.computer.IsMemoryEnabled = True
+        self.computer.IsNetworkEnabled = True
+        self.computer.Open()
+
+        # 帧时间滑动窗口 (用于计算 1% Low FPS)
+        self.fps_history = deque(maxlen=100)
+
+        # 网速滑动计算兜底
+        self.last_net_time = time.time()
+        self.last_net_bytes_sent = 0
+        self.last_net_bytes_recv = 0
+
+        # 初始化 Windows 性能计数器 (免管理员权限获取 Intel P核/E核 实时真实睿频)
+        self.pdh_query = None
+        self.p_pdh_handles = []
+        self.e_pdh_handles = []
+        try:
+            import win32pdh
+            self.pdh_query = win32pdh.OpenQuery()
+            for i in range(8):
+                h = win32pdh.AddCounter(self.pdh_query, f"\\Processor Information(0,{i})\\% Processor Performance")
+                self.p_pdh_handles.append(h)
+            for i in range(8, 20):
+                h = win32pdh.AddCounter(self.pdh_query, f"\\Processor Information(0,{i})\\% Processor Performance")
+                self.e_pdh_handles.append(h)
+            win32pdh.CollectQueryData(self.pdh_query)
+        except Exception:
+            self.pdh_query = None
+
+    def update(self) -> dict:
+        """
+        全量更新硬件传感器并提取 ui思路.txt 中指定的固定指标
+        """
+        for hw in self.computer.Hardware:
+            hw.Update()
+            for sub in hw.SubHardware:
+                sub.Update()
+
+        # 提取指标结构
+        data = {
+            "overview": {
+                "is_gaming": False,
+                "fps": None,
+                "fps_low": None,
+                "net_down_str": "0 KB/s",
+                "net_up_str": "0 KB/s",
+                "ram_used_gb": 0.0,
+                "ram_total_gb": 32.0,
+                "ram_percent": 0.0
+            },
+            "cpu": {
+                "name": "Ultra 7 265KF",
+                "temp_hotspot": None,      # Core Max 或 CPU Package
+                "power_package_w": None,   # CPU Package Power
+                "volt_core_v": None,       # VCore
+                "p_core_avg_load": 0.0,
+                "p_core_avg_clock_ghz": 0.0,
+                "e_core_avg_load": 0.0,
+                "e_core_avg_clock_ghz": 0.0
+            },
+            "gpu": {
+                "name": "RX 7800 XT",
+                "temp_hotspot": None,      # GPU Hot Spot
+                "temp_core": None,         # GPU Core Temp
+                "power_package_w": None,   # GPU Package Power
+                "clock_core_mhz": None,    # GPU Core Clock
+                "clock_mem_mhz": None,     # GPU Memory Clock
+                "load_core": 0.0,          # GPU Core Load
+                "vram_used_gb": 0.0,
+                "vram_total_gb": 16.0,
+                "vram_percent": 0.0
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+        # 临时聚合变量
+        p_loads = []
+        e_loads = []
+        p_clocks = []
+        e_clocks = []
+
+        for hw in self.computer.Hardware:
+            all_hw = [hw] + list(hw.SubHardware)
+            for h in all_hw:
+                htype = str(h.HardwareType)
+
+                # ==========================
+                # CPU 传感器解析 (Intel Ultra 7 265KF)
+                # ==========================
+                if htype == "Cpu":
+                    for s in h.Sensors:
+                        sname = s.Name
+                        stype = str(s.SensorType)
+                        val = s.Value if s.Value is not None else 0.0
+
+                        # 温度: Core Max 优先
+                        if stype == "Temperature":
+                            if sname == "Core Max":
+                                data["cpu"]["temp_hotspot"] = round(val, 1)
+                            elif sname == "CPU Package" and data["cpu"]["temp_hotspot"] is None:
+                                data["cpu"]["temp_hotspot"] = round(val, 1)
+
+                        # 功耗: CPU Package Power
+                        elif stype == "Power" and sname == "CPU Package":
+                            data["cpu"]["power_package_w"] = round(val, 1)
+
+                        # 电压: CPU Core
+                        elif stype == "Voltage" and "CPU Core" in sname:
+                            data["cpu"]["volt_core_v"] = round(val, 3)
+
+                        # 占用率: P核 (Core 1~8) 与 E核 (Core 9~20)
+                        elif stype == "Load" and sname.startswith("CPU Core #"):
+                            try:
+                                core_idx = int(sname.replace("CPU Core #", ""))
+                                if 1 <= core_idx <= 8:
+                                    p_loads.append(val)
+                                elif 9 <= core_idx <= 20:
+                                    e_loads.append(val)
+                            except ValueError:
+                                pass
+
+                        # 频率: P-Core #1..#8 与 E-Core #1..#12
+                        elif stype == "Clock":
+                            if val > 0:
+                                if sname.startswith("P-Core #"):
+                                    p_clocks.append(val)
+                                elif sname.startswith("E-Core #"):
+                                    e_clocks.append(val)
+
+                # ==========================
+                # GPU 传感器解析 (AMD RX 7800 XT)
+                # ==========================
+                elif "Gpu" in htype:
+                    for s in h.Sensors:
+                        sname = s.Name
+                        stype = str(s.SensorType)
+                        val = s.Value if s.Value is not None else 0.0
+
+                        if stype == "Factor" and sname == "Fullscreen FPS":
+                            if val > 0:
+                                data["overview"]["is_gaming"] = True
+                                data["overview"]["fps"] = int(val)
+                                self.fps_history.append(val)
+                                # 计算 1% Low FPS
+                                sorted_fps = sorted(self.fps_history)
+                                low_idx = max(1, int(len(sorted_fps) * 0.01))
+                                data["overview"]["fps_low"] = int(sum(sorted_fps[:low_idx]) / low_idx)
+
+                        elif stype == "Temperature":
+                            if sname == "GPU Hot Spot":
+                                data["gpu"]["temp_hotspot"] = round(val, 1)
+                            elif sname == "GPU Core":
+                                data["gpu"]["temp_core"] = round(val, 1)
+
+                        elif stype == "Power" and sname == "GPU Package":
+                            data["gpu"]["power_package_w"] = round(val, 1)
+
+                        elif stype == "Clock":
+                            if sname == "GPU Core":
+                                data["gpu"]["clock_core_mhz"] = int(val)
+                            elif sname == "GPU Memory":
+                                data["gpu"]["clock_mem_mhz"] = int(val)
+
+                        elif stype == "Load" and sname == "GPU Core":
+                            data["gpu"]["load_core"] = round(val, 1)
+
+                        elif sname == "D3D Dedicated Memory Used":
+                            data["gpu"]["vram_used_gb"] = round(val / 1024.0, 1)
+                            data["gpu"]["vram_percent"] = round((data["gpu"]["vram_used_gb"] / 16.0) * 100, 1)
+
+                # ==========================
+                # 内存解析
+                # ==========================
+                elif htype == "Memory" and h.Name == "Total Memory":
+                    for s in h.Sensors:
+                        val = s.Value if s.Value is not None else 0.0
+                        if s.Name == "Memory Used":
+                            data["overview"]["ram_used_gb"] = round(val, 1)
+                        elif s.Name == "Memory":
+                            data["overview"]["ram_percent"] = round(val, 1)
+                    data["overview"]["ram_total_gb"] = 32.0
+
+                # ==========================
+                # 网络流速解析 (WLAN 3)
+                # ==========================
+                elif htype == "Network" and "WLAN" in h.Name:
+                    for s in h.Sensors:
+                        val = s.Value if s.Value is not None else 0.0
+                        if s.Name == "Download Speed":
+                            kb = val / 1024.0
+                            data["overview"]["net_down_str"] = f"{kb/1024.0:.1f} MB/s" if kb >= 1024 else f"{kb:.0f} KB/s"
+                        elif s.Name == "Upload Speed":
+                            kb = val / 1024.0
+                            data["overview"]["net_up_str"] = f"{kb/1024.0:.1f} MB/s" if kb >= 1024 else f"{kb:.0f} KB/s"
+
+        # 计算 P/E 核平均值
+        if p_loads:
+            data["cpu"]["p_core_avg_load"] = round(sum(p_loads) / len(p_loads), 1)
+        if e_loads:
+            data["cpu"]["e_core_avg_load"] = round(sum(e_loads) / len(e_loads), 1)
+            
+        if p_clocks:
+            data["cpu"]["p_core_avg_clock_ghz"] = round((sum(p_clocks) / len(p_clocks)) / 1000.0, 2)
+        elif self.pdh_query:
+            try:
+                import win32pdh
+                win32pdh.CollectQueryData(self.pdh_query)
+                p_vals = [win32pdh.GetFormattedCounterValue(h, win32pdh.PDH_FMT_DOUBLE)[1] for h in self.p_pdh_handles]
+                data["cpu"]["p_core_avg_clock_ghz"] = round(3.9 * (sum(p_vals) / len(p_vals) / 100.0), 2)
+            except Exception:
+                pass
+
+        if e_clocks:
+            data["cpu"]["e_core_avg_clock_ghz"] = round((sum(e_clocks) / len(e_clocks)) / 1000.0, 2)
+        elif self.pdh_query:
+            try:
+                import win32pdh
+                e_vals = [win32pdh.GetFormattedCounterValue(h, win32pdh.PDH_FMT_DOUBLE)[1] for h in self.e_pdh_handles]
+                data["cpu"]["e_core_avg_clock_ghz"] = round(3.9 * (sum(e_vals) / len(e_vals) / 100.0), 2)
+            except Exception:
+                pass
+
+        return data
+
+    def close(self):
+        self.computer.Close()
+
+if __name__ == "__main__":
+    monitor = HardwareMonitor()
+    try:
+        for _ in range(3):
+            d = monitor.update()
+            import json
+            print(json.dumps(d, ensure_ascii=False, indent=2))
+            time.sleep(1)
+    finally:
+        monitor.close()

@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYBER HUD // 薰衣草紫 2400×1080 副屏性能监控</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    ::-webkit-scrollbar { display: none; }
+    * { -ms-overflow-style: none; scrollbar-width: none; }
+
+    :root {
+      /* 薰衣草紫 (Lavender Cyberpunk) 调色盘 */
+      --bg-page: #06040a;
+      --bg-frame: #090610;
+      --bg-panel: #110c1f;
+      --bg-subpanel: #18122c;
+      --border-panel: #2d1f4d;
+      --border-sub: #3c2a68;
+      
+      --text-main: #f5f0ff;
+      --text-sub: #8f7ca8;
+      --text-dim: #64557a;
+      
+      /* 薰衣草紫核心色系 */
+      --lavender-bright: #c084fc;  /* 核心亮薰衣草紫 */
+      --lavender-light: #e9d5ff;   /* 浅薰衣草白 */
+      --lavender-glow: rgba(192, 132, 252, 0.55);
+      --lavender-orchid: #e879f9; /* 兰花紫点缀 */
+      
+      --meter-off: #1e1538;
+      --meter-on: #c084fc;
+      --meter-accent: #e879f9;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .font-hud {
+      font-family: 'Chakra Petch', sans-serif;
+    }
+
+    /* 赛博战术切角面板 */
+    .hud-panel {
+      position: relative;
+      background-color: var(--bg-panel);
+      border: 1.5px solid var(--border-panel);
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+    }
+
+    /* 内嵌子卡片 */
+    .hud-subcard {
+      background-color: var(--bg-subpanel);
+      border: 1px solid var(--border-panel);
+      border-radius: 10px;
+    }
+
+    /* 粗大分段机械仪表 (Segmented Meter) */
+    .seg-bar {
+      display: flex;
+      gap: 3px;
+      height: 14px;
+      width: 100%;
+    }
+    .seg-tick {
+      flex: 1;
+      border-radius: 1px;
+      background-color: var(--meter-off);
+      transition: background-color 0.15s ease;
+    }
+    .seg-tick.lavender {
+      background-color: var(--meter-on);
+      box-shadow: 0 0 8px var(--lavender-glow);
+    }
+    .seg-tick.orchid {
+      background-color: var(--meter-accent);
+      box-shadow: 0 0 8px rgba(232, 121, 249, 0.6);
+    }
+
+    /* 薰衣草紫霓虹发光 */
+    .glow-lavender {
+      text-shadow: 0 0 20px var(--lavender-glow);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-6 px-4">
+
+  <!-- 顶部电脑评审控制栏 -->
+  <aside class="w-full max-w-[460px] mb-3 flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl px-4 py-2 text-xs">
+    <div class="flex items-center gap-2">
+      <span class="w-2.5 h-2.5 rounded-full bg-[#c084fc] animate-pulse"></span>
+      <span class="font-hud font-bold tracking-wider text-purple-200">LAVENDER CYBER HUD (2400×1080)</span>
+    </div>
+    <div class="flex gap-1.5">
+      <button id="btnDaily" onclick="setMode('daily')" class="px-3 py-1 rounded bg-[#c084fc] text-black font-bold font-hud text-xs">日常</button>
+      <button id="btnGaming" onclick="setMode('gaming')" class="px-3 py-1 rounded bg-slate-800 text-slate-300 font-bold font-hud text-xs hover:text-white">游戏</button>
+    </div>
+  </aside>
+
+  <!-- ======================================================== -->
+  <!-- 手机 20:9 (2400×1080) 等比例容器模拟                      -->
+  <!-- 彻底剔除：顶部系统头、底部协议脚、01/02/03、CPU/GPU 名称头 -->
+  <!-- 字号翻倍乘 2，纯粹由三大核心监控块纵向均匀填满            -->
+  <!-- ======================================================== -->
+  <main class="w-full max-w-[460px] h-[980px] bg-[var(--bg-frame)] border-2 border-[var(--border-panel)] rounded-[2.5rem] p-4 flex flex-col justify-between shadow-2xl relative overflow-hidden">
+
+    <!-- ====================================================== -->
+    <!-- 模块 01: FPS / 1% LOW / NET / RAM                     -->
+    <!-- ====================================================== -->
+    <section class="hud-panel p-4 flex-1 flex flex-col justify-between mb-3.5">
+      
+      <!-- 上半部：FPS (巨型 72px) 与 1% LOW (32px) -->
+      <div class="hud-subcard p-3.5 flex items-center justify-between">
+        <!-- 实时 FPS -->
+        <div class="flex flex-col">
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] tracking-wider">FRAME RATE</span>
+          <div class="flex items-baseline gap-2 mt-0.5">
+            <span id="valFps" class="text-7xl font-black text-[var(--lavender-bright)] glow-lavender tracking-tighter">--</span>
+            <span class="text-base font-hud font-bold text-[var(--text-sub)]">FPS</span>
+          </div>
+        </div>
+
+        <!-- 1% LOW FPS -->
+        <div class="flex flex-col items-end border-l border-[var(--border-panel)] pl-5">
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] tracking-wider">1% LOW</span>
+          <div class="flex items-baseline gap-1 mt-1.5">
+            <span id="valFpsLow" class="text-3xl font-extrabold text-[var(--lavender-light)]">--</span>
+            <span class="text-xs font-hud text-[var(--text-sub)]">FPS</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 下半部：NET (上下行速度) 与 RAM (物理内存) -->
+      <div class="grid grid-cols-2 gap-3 mt-3">
+        <!-- NET 上下行 -->
+        <div class="hud-subcard p-3 flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-1">
+            <span class="font-hud text-xs font-bold text-[var(--text-sub)]">NET TRAFFIC</span>
+            <span class="text-[11px] text-[var(--lavender-bright)] font-hud font-bold">WLAN</span>
+          </div>
+          <div class="space-y-1">
+            <div class="flex items-baseline justify-between">
+              <span class="text-xs text-[var(--text-sub)] font-hud">DL ↓</span>
+              <span id="valNetDown" class="text-xl font-extrabold text-[var(--text-main)]">240 KB/s</span>
+            </div>
+            <div class="flex items-baseline justify-between border-t border-[var(--border-panel)]/60 pt-1">
+              <span class="text-xs text-[var(--text-sub)] font-hud">UL ↑</span>
+              <span id="valNetUp" class="text-sm font-bold text-[var(--text-sub)]">35 KB/s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RAM 内存 -->
+        <div class="hud-subcard p-3 flex flex-col justify-between">
+          <div class="flex justify-between items-center mb-1">
+            <span class="font-hud text-xs font-bold text-[var(--text-sub)]">RAM USAGE</span>
+            <span id="valRamUsed" class="text-sm font-extrabold text-[var(--lavender-bright)]">14.8G (46%)</span>
+          </div>
+          <div class="mt-2">
+            <div id="barRam" class="seg-bar"></div>
+          </div>
+          <div class="text-[11px] text-[var(--text-sub)] text-right mt-1 font-hud">TOTAL: 32.0 GB</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ====================================================== -->
+    <!-- 模块 02: CPU (HOTSPOT / PWR / VOLT / P-CORE / E-CORE)  -->
+    <!-- ====================================================== -->
+    <section class="hud-panel p-4 flex-1 flex flex-col justify-between mb-3.5">
+      
+      <!-- 核心三要素读数：HOTSPOT (热点温) | POWER (功耗) | VOLT (核心电压) -->
+      <div class="hud-subcard p-3 grid grid-cols-3 gap-2 text-center">
+        <!-- HOTSPOT -->
+        <div>
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] tracking-wider block">HOTSPOT</span>
+          <div class="mt-1">
+            <span id="valCpuTemp" class="text-2xl font-black text-[var(--lavender-bright)] glow-lavender">52.4</span>
+            <span class="text-[10px] text-[var(--text-sub)]">°C</span>
+          </div>
+        </div>
+
+        <!-- POWER -->
+        <div class="border-x border-[var(--border-panel)]">
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] tracking-wider block">POWER</span>
+          <div class="mt-1">
+            <span id="valCpuPower" class="text-2xl font-black text-[var(--text-main)]">65</span>
+            <span class="text-[10px] text-[var(--text-sub)]">W</span>
+          </div>
+        </div>
+
+        <!-- VOLT -->
+        <div>
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] tracking-wider block">VCORE</span>
+          <div class="mt-1">
+            <span id="valCpuVolt" class="text-2xl font-black text-[var(--lavender-light)]">1.12</span>
+            <span class="text-[10px] text-[var(--text-sub)]">V</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- P-CORE / E-CORE 均值大刻度条 -->
+      <div class="space-y-3 mt-3">
+        <!-- P-CORE (8核均值) -->
+        <div class="hud-subcard p-3">
+          <div class="flex justify-between items-baseline mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-sm bg-[var(--lavender-bright)] shadow-[0_0_8px_var(--lavender-glow)]"></span>
+              <span class="font-hud font-bold text-sm text-[var(--text-main)]">P-CORE AVG (8C)</span>
+            </div>
+            <div class="flex items-baseline gap-3">
+              <span id="valPCoreFreq" class="text-sm font-bold text-[var(--text-sub)]">5.20 GHz</span>
+              <span id="valPCoreLoad" class="text-xl font-black text-[var(--lavender-bright)]">35%</span>
+            </div>
+          </div>
+          <div id="barPCore" class="seg-bar"></div>
+        </div>
+
+        <!-- E-CORE (12核均值) -->
+        <div class="hud-subcard p-3">
+          <div class="flex justify-between items-baseline mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-sm bg-[var(--text-sub)]"></span>
+              <span class="font-hud font-bold text-sm text-[var(--text-sub)]">E-CORE AVG (12C)</span>
+            </div>
+            <div class="flex items-baseline gap-3">
+              <span id="valECoreFreq" class="text-sm font-bold text-[var(--text-sub)]">4.40 GHz</span>
+              <span id="valECoreLoad" class="text-xl font-bold text-[var(--text-main)]">18%</span>
+            </div>
+          </div>
+          <div id="barECore" class="seg-bar"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ====================================================== -->
+    <!-- 模块 03: GPU (HOTSPOT / CORE / PWR / CLOCK / LOAD / VRAM)-->
+    <!-- ====================================================== -->
+    <section class="hud-panel p-4 flex-1 flex flex-col justify-between">
+      
+      <!-- GPU 三要素读数: HOTSPOT | CORE | PWR (对称 CPU) -->
+      <div class="hud-subcard p-3 grid grid-cols-3 gap-1 text-center">
+        <!-- HOTSPOT -->
+        <div>
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] block">HOTSPOT</span>
+          <div class="mt-1">
+            <span id="valGpuHotspot" class="text-2xl font-black text-[var(--lavender-bright)] glow-lavender">42</span>
+            <span class="text-[10px] text-[var(--text-sub)]">°C</span>
+          </div>
+        </div>
+
+        <!-- CORE TEMP -->
+        <div class="border-x border-[var(--border-panel)]">
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] block">CORE</span>
+          <div class="mt-1">
+            <span id="valGpuCoreTemp" class="text-2xl font-black text-[var(--text-main)]">35</span>
+            <span class="text-[10px] text-[var(--text-sub)]">°C</span>
+          </div>
+        </div>
+
+        <!-- POWER -->
+        <div>
+          <span class="font-hud text-xs font-bold text-[var(--text-sub)] block">POWER</span>
+          <div class="mt-1">
+            <span id="valGpuPower" class="text-2xl font-black text-[var(--text-main)]">45</span>
+            <span class="text-[10px] text-[var(--text-sub)]">W</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- GPU 核心占用与 16GB 显存占用 -->
+      <div class="space-y-3 mt-3">
+        <!-- CORE LOAD -->
+        <div class="hud-subcard p-3">
+          <div class="flex justify-between items-baseline mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-sm bg-[var(--lavender-bright)] shadow-[0_0_8px_var(--lavender-glow)]"></span>
+              <span class="font-hud font-bold text-sm text-[var(--text-main)]">GPU CORE LOAD</span>
+            </div>
+            <div class="flex items-baseline gap-3">
+              <span id="valGpuBarClock" class="text-sm font-bold text-[var(--text-sub)]">1470 MHz</span>
+              <span id="valGpuLoad" class="text-xl font-black text-[var(--lavender-bright)]">22%</span>
+            </div>
+          </div>
+          <div id="barGpuLoad" class="seg-bar"></div>
+        </div>
+
+        <!-- VRAM 16GB -->
+        <div class="hud-subcard p-3">
+          <div class="flex justify-between items-baseline mb-2">
+            <span class="font-hud font-bold text-sm text-[var(--text-sub)]">VRAM (16GB GDDR6)</span>
+            <span id="valVram" class="text-sm font-bold text-[var(--text-main)]">2.1G <span class="text-xs text-[var(--text-sub)]">(13%)</span></span>
+          </div>
+          <div id="barVram" class="seg-bar"></div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    // 渲染分段刻度条 (24个机械分段)
+    function renderSegBar(containerId, percentage, colorClass = 'lavender') {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const totalTicks = 24;
+      const activeTicks = Math.round((percentage / 100) * totalTicks);
+      
+      let html = '';
+      for (let i = 0; i < totalTicks; i++) {
+        const isActive = i < activeTicks;
+        html += `<div class="seg-tick ${isActive ? colorClass : ''}"></div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    const mockData = {
+      daily: {
+        fps: "--",
+        fpsLow: "--",
+        netDown: "240 KB/s",
+        netUp: "35 KB/s",
+        ramUsed: "14.8G (46%)",
+        ramPct: 46,
+        cpuTemp: "43.5",
+        cpuPower: "38",
+        cpuVolt: "1.05",
+        pFreq: "5.20 GHz",
+        pLoad: 16,
+        eFreq: "4.40 GHz",
+        eLoad: 5,
+        gpuHotspot: "39",
+        gpuCore: "33",
+        gpuPower: "37",
+        gpuClock: "272",
+        gpuLoad: 14,
+        vramText: "1.8G (11%)",
+        vramPct: 11
+      },
+      gaming: {
+        fps: "144",
+        fpsLow: "119",
+        netDown: "1.4 MB/s",
+        netUp: "180 KB/s",
+        ramUsed: "21.5G (67%)",
+        ramPct: 67,
+        cpuTemp: "68.2",
+        cpuPower: "125",
+        cpuVolt: "1.28",
+        pFreq: "5.40 GHz",
+        pLoad: 68,
+        eFreq: "4.60 GHz",
+        eLoad: 42,
+        gpuHotspot: "76",
+        gpuCore: "61",
+        gpuPower: "245",
+        gpuClock: "2480",
+        gpuLoad: 98,
+        vramText: "11.4G (71%)",
+        vramPct: 71
+      }
+    };
+
+    function applyData(d) {
+      document.getElementById('valFps').innerText = d.fps;
+      document.getElementById('valFpsLow').innerText = d.fpsLow;
+      document.getElementById('valNetDown').innerText = d.netDown;
+      document.getElementById('valNetUp').innerText = d.netUp;
+      document.getElementById('valRamUsed').innerText = d.ramUsed;
+
+      document.getElementById('valCpuTemp').innerText = d.cpuTemp;
+      document.getElementById('valCpuPower').innerText = d.cpuPower;
+      document.getElementById('valCpuVolt').innerText = d.cpuVolt;
+      document.getElementById('valPCoreFreq').innerText = d.pFreq;
+      document.getElementById('valPCoreLoad').innerText = d.pLoad + '%';
+      document.getElementById('valECoreFreq').innerText = d.eFreq;
+      document.getElementById('valECoreLoad').innerText = d.eLoad + '%';
+
+      document.getElementById('valGpuHotspot').innerText = d.gpuHotspot;
+      document.getElementById('valGpuCoreTemp').innerText = d.gpuCore;
+      const elGpuClock = document.getElementById('valGpuClock');
+      if (elGpuClock) elGpuClock.innerText = d.gpuClock;
+      const elGpuBarClock = document.getElementById('valGpuBarClock');
+      if (elGpuBarClock) {
+        elGpuBarClock.innerText = d.gpuClock !== '--' ? d.gpuClock + ' MHz' : '-- MHz';
+      }
+      document.getElementById('valGpuLoad').innerText = d.gpuLoad + '%';
+
+      const vparts = (d.vramText || "").split(' ');
+      document.getElementById('valVram').innerHTML = `${vparts[0] || "--"} <span class="text-xs text-[var(--text-sub)]">${vparts[1] || ""}</span>`;
+
+      // 仪表条刷新
+      renderSegBar('barRam', d.ramPct, 'lavender');
+      renderSegBar('barPCore', d.pLoad, d.pLoad > 80 ? 'orchid' : 'lavender');
+      renderSegBar('barECore', d.eLoad, 'lavender');
+      renderSegBar('barGpuLoad', d.gpuLoad, d.gpuLoad > 85 ? 'orchid' : 'lavender');
+      renderSegBar('barVram', d.vramPct, 'lavender');
+    }
+
+    function setMode(mode) {
+      const btnDaily = document.getElementById('btnDaily');
+      const btnGaming = document.getElementById('btnGaming');
+      if (mode === 'daily') {
+        btnDaily.className = "px-3 py-1 rounded bg-[#c084fc] text-black font-bold font-hud text-xs";
+        btnGaming.className = "px-3 py-1 rounded bg-slate-800 text-slate-300 font-bold font-hud text-xs hover:text-white";
+        applyData(mockData.daily);
+      } else {
+        btnGaming.className = "px-3 py-1 rounded bg-[#c084fc] text-black font-bold font-hud text-xs";
+        btnDaily.className = "px-3 py-1 rounded bg-slate-800 text-slate-300 font-bold font-hud text-xs hover:text-white";
+        applyData(mockData.gaming);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      applyData(mockData.daily);
+
+      // 如果通过 HTTP 访问，自动拉取真实电脑硬件数据
+      if (location.protocol.startsWith('http')) {
+        setInterval(async () => {
+          try {
+            const res = await fetch('/api/metrics');
+            if (res.ok) {
+              const live = await res.json();
+              const d = {
+                fps: live.overview.fps !== null ? live.overview.fps : "--",
+                fpsLow: live.overview.fps_low !== null ? live.overview.fps_low : "--",
+                netDown: live.overview.net_down_str,
+                netUp: live.overview.net_up_str,
+                ramUsed: live.overview.ram_used_gb + "G (" + Math.round(live.overview.ram_percent) + "%)",
+                ramPct: Math.round(live.overview.ram_percent),
+                cpuTemp: (live.cpu.temp_hotspot !== null && live.cpu.temp_hotspot > 0) ? live.cpu.temp_hotspot : "--",
+                cpuPower: (live.cpu.power_package_w !== null && live.cpu.power_package_w > 0) ? Math.round(live.cpu.power_package_w) : "--",
+                cpuVolt: live.cpu.volt_core_v !== null ? live.cpu.volt_core_v : "--",
+                pFreq: live.cpu.p_core_avg_clock_ghz > 0 ? live.cpu.p_core_avg_clock_ghz + " GHz" : "-- GHz",
+                pLoad: Math.round(live.cpu.p_core_avg_load),
+                eFreq: live.cpu.e_core_avg_clock_ghz > 0 ? live.cpu.e_core_avg_clock_ghz + " GHz" : "-- GHz",
+                eLoad: Math.round(live.cpu.e_core_avg_load),
+                gpuHotspot: live.gpu.temp_hotspot !== null ? Math.round(live.gpu.temp_hotspot) : "--",
+                gpuCore: live.gpu.temp_core !== null ? Math.round(live.gpu.temp_core) : "--",
+                gpuPower: live.gpu.power_package_w !== null ? Math.round(live.gpu.power_package_w) : "--",
+                gpuClock: live.gpu.clock_core_mhz !== null ? live.gpu.clock_core_mhz : "--",
+                gpuLoad: Math.round(live.gpu.load_core),
+                vramText: live.gpu.vram_used_gb + "G (" + Math.round(live.gpu.vram_percent) + "%)",
+                vramPct: Math.round(live.gpu.vram_percent)
+              };
+              applyData(d);
+            }
+          } catch (e) {}
+        }, 1000);
+      }
+    });
+  </script>
+</body>
+</html>

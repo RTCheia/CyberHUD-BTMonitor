@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Android build outputs & local binaries
+android_app/build/
+android_app/*.apk
+*.apk
+*.flat
+*.arsc
+debug.keystore
+*.idsig
+*.pdb
+
+# Local user configuration & sensitive data
+config.json
+pc_sender/config.json
+ui思路.txt
+
+# Temporary test files & scratch scripts
+analyze_sensors.py
+generate_sensor_report.py
+scan_sensors.ps1
+sensors_inventory.csv
+send_test.py
+test_lhm_diag.py
+test_rfcomm_connect.py
+phone_screenshot.png
+fullscreen_phone.png
+live_final_screen.png
+live_phone_screen.png
+live_phone_fullscreen.png
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

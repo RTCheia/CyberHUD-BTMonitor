@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 薰衣草紫 (Lavender Cyberpunk) 调色盘 -->
+    <color name="bg_dark">#06040A</color>
+    <color name="bg_frame">#090610</color>
+    <color name="bg_panel">#110C1F</color>
+    <color name="bg_subpanel">#18122C</color>
+    <color name="border_panel">#2D1F4D</color>
+    <color name="border_sub">#3C2A68</color>
+    
+    <color name="text_main">#F5F0FF</color>
+    <color name="text_sub">#8F7CA8</color>
+    <color name="text_dim">#64557A</color>
+    
+    <color name="lavender_bright">#C084FC</color>
+    <color name="lavender_light">#E9D5FF</color>
+    <color name="lavender_orchid">#E879F9</color>
+    
+    <color name="meter_track">#1E1538</color>
+    <color name="meter_lavender">#C084FC</color>
+</resources>
