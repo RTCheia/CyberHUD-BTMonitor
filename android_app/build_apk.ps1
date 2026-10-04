@@ -1,4 +1,6 @@
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $BUILD_TOOLS = "D:\android-sdk\build-tools\33.0.2"
 $PLATFORM = "D:\android-sdk\platforms\android-33\android.jar"
