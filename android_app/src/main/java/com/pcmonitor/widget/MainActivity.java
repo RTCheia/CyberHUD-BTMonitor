@@ -24,11 +24,30 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 public class MainActivity extends Activity {
     private static final String TAG = "PCMonitor";
+
+    // 一阶低通滤波 (EMA) 算法: 显示值 = 历史值 * 0.9 + 当前值 * 0.1
+    private static final double ALPHA_HISTORY = 0.9;
+    private static final double ALPHA_CURRENT = 0.1;
+    private final Map<String, Double> emaHistory = new HashMap<>();
+
+    private double filterEma(String key, double currentVal) {
+        if (!emaHistory.containsKey(key)) {
+            // 冷启动首帧：直接记录初始值
+            emaHistory.put(key, currentVal);
+            return currentVal;
+        }
+        double history = emaHistory.get(key);
+        double smoothed = ALPHA_HISTORY * history + ALPHA_CURRENT * currentVal;
+        emaHistory.put(key, smoothed);
+        return smoothed;
+    }
 
     // 标准蓝牙串口服务 SPP UUID
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
@@ -199,8 +218,8 @@ public class MainActivity extends Activity {
                         tvNetDown.setText(ov.optString("net_down_str", "0 KB/s"));
                         tvNetUp.setText(ov.optString("net_up_str", "0 KB/s"));
 
-                        double ramUsed = ov.optDouble("ram_used_gb", 0.0);
-                        double ramPct = ov.optDouble("ram_percent", 0.0);
+                        double ramUsed = filterEma("ram_used", ov.optDouble("ram_used_gb", 0.0));
+                        double ramPct = filterEma("ram_percent", ov.optDouble("ram_percent", 0.0));
                         tvRamUsed.setText(String.format(Locale.US, "%.1fG (%.0f%%)", ramUsed, ramPct));
                         pbRam.setProgress((int) Math.round(ramPct));
                     }
@@ -210,6 +229,7 @@ public class MainActivity extends Activity {
                         JSONObject cpu = data.getJSONObject("cpu");
                         double tempHotspot = cpu.optDouble("temp_hotspot", 0.0);
                         if (tempHotspot > 0) {
+                            tempHotspot = filterEma("cpu_temp", tempHotspot);
                             tvCpuTemp.setText(String.format(Locale.US, "%.1f°C", tempHotspot));
                         } else {
                             tvCpuTemp.setText("--");
@@ -217,25 +237,29 @@ public class MainActivity extends Activity {
 
                         double power = cpu.optDouble("power_package_w", 0.0);
                         if (power > 0) {
+                            power = filterEma("cpu_power", power);
                             tvCpuPower.setText(String.format(Locale.US, "%.0fW", power));
                         } else {
                             tvCpuPower.setText("--");
                         }
 
                         if (cpu.has("volt_core_v") && !cpu.isNull("volt_core_v")) {
-                            tvCpuVolt.setText(String.format(Locale.US, "%.2fV", cpu.getDouble("volt_core_v")));
+                            double volt = filterEma("cpu_volt", cpu.getDouble("volt_core_v"));
+                            tvCpuVolt.setText(String.format(Locale.US, "%.2fV", volt));
                         } else {
                             tvCpuVolt.setText("--");
                         }
 
-                        double pLoad = cpu.optDouble("p_core_avg_load", 0.0);
+                        double pLoad = filterEma("cpu_p_load", cpu.optDouble("p_core_avg_load", 0.0));
                         double pClock = cpu.optDouble("p_core_avg_clock_ghz", 0.0);
+                        if (pClock > 0) pClock = filterEma("cpu_p_clock", pClock);
                         tvPCoreLoad.setText(String.format(Locale.US, "%.0f%%", pLoad));
                         tvPCoreFreq.setText(pClock > 0 ? String.format(Locale.US, "%.2f GHz", pClock) : "-- GHz");
                         pbPCore.setProgress((int) Math.round(pLoad));
 
-                        double eLoad = cpu.optDouble("e_core_avg_load", 0.0);
+                        double eLoad = filterEma("cpu_e_load", cpu.optDouble("e_core_avg_load", 0.0));
                         double eClock = cpu.optDouble("e_core_avg_clock_ghz", 0.0);
+                        if (eClock > 0) eClock = filterEma("cpu_e_clock", eClock);
                         tvECoreLoad.setText(String.format(Locale.US, "%.0f%%", eLoad));
                         tvECoreFreq.setText(eClock > 0 ? String.format(Locale.US, "%.2f GHz", eClock) : "-- GHz");
                         pbECore.setProgress((int) Math.round(eLoad));
@@ -245,23 +269,43 @@ public class MainActivity extends Activity {
                     if (data.has("gpu")) {
                         JSONObject gpu = data.getJSONObject("gpu");
                         double hotspot = gpu.optDouble("temp_hotspot", 0.0);
-                        tvGpuHotspot.setText(hotspot > 0 ? String.format(Locale.US, "%.0f°C", hotspot) : "--");
+                        if (hotspot > 0) {
+                            hotspot = filterEma("gpu_hotspot", hotspot);
+                            tvGpuHotspot.setText(String.format(Locale.US, "%.0f°C", hotspot));
+                        } else {
+                            tvGpuHotspot.setText("--");
+                        }
 
                         double coreTemp = gpu.optDouble("temp_core", 0.0);
-                        tvGpuCoreTemp.setText(coreTemp > 0 ? String.format(Locale.US, "%.0f°C", coreTemp) : "--");
+                        if (coreTemp > 0) {
+                            coreTemp = filterEma("gpu_core_temp", coreTemp);
+                            tvGpuCoreTemp.setText(String.format(Locale.US, "%.0f°C", coreTemp));
+                        } else {
+                            tvGpuCoreTemp.setText("--");
+                        }
 
                         double power = gpu.optDouble("power_package_w", 0.0);
-                        tvGpuPower.setText(power > 0 ? String.format(Locale.US, "%.0fW", power) : "--");
+                        if (power > 0) {
+                            power = filterEma("gpu_power", power);
+                            tvGpuPower.setText(String.format(Locale.US, "%.0fW", power));
+                        } else {
+                            tvGpuPower.setText("--");
+                        }
 
                         int clock = gpu.optInt("clock_core_mhz", 0);
-                        tvGpuClock.setText(clock > 0 ? String.format(Locale.US, "%d MHz", clock) : "-- MHz");
+                        if (clock > 0) {
+                            clock = (int) Math.round(filterEma("gpu_clock", (double) clock));
+                            tvGpuClock.setText(String.format(Locale.US, "%d MHz", clock));
+                        } else {
+                            tvGpuClock.setText("-- MHz");
+                        }
 
-                        double gpuLoad = gpu.optDouble("load_core", 0.0);
+                        double gpuLoad = filterEma("gpu_load", gpu.optDouble("load_core", 0.0));
                         tvGpuLoad.setText(String.format(Locale.US, "%.0f%%", gpuLoad));
                         pbGpuLoad.setProgress((int) Math.round(gpuLoad));
 
-                        double vramUsed = gpu.optDouble("vram_used_gb", 0.0);
-                        double vramPct = gpu.optDouble("vram_percent", 0.0);
+                        double vramUsed = filterEma("gpu_vram_used", gpu.optDouble("vram_used_gb", 0.0));
+                        double vramPct = filterEma("gpu_vram_pct", gpu.optDouble("vram_percent", 0.0));
                         tvVramText.setText(String.format(Locale.US, "%.1fG (%.0f%%)", vramUsed, vramPct));
                         pbVram.setProgress((int) Math.round(vramPct));
                     }
