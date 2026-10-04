@@ -55,6 +55,75 @@ class HardwareMonitor:
         except Exception:
             self.pdh_query = None
 
+        # 一阶低通滤波器配置 (方案 B: 历史权重 0.9 + 当前实测权重 0.1)
+        self.alpha_current = 0.1
+        self.alpha_history = 0.9
+        self.ema_history = {}
+
+    def _filter_val(self, key: str, val, precision: int = 1, is_int: bool = False):
+        if val is None:
+            return None
+        try:
+            val = float(val)
+        except (ValueError, TypeError):
+            return val
+
+        if key not in self.ema_history or self.ema_history[key] is None:
+            # 第一帧冷启动：直接以当前第一帧作为初始历史值
+            self.ema_history[key] = val
+            return int(round(val)) if is_int else round(val, precision)
+
+        # 方案 B: 滤波值 = 历史滤波值 * 0.9 + 当前实测值 * 0.1
+        smoothed = self.alpha_history * self.ema_history[key] + self.alpha_current * val
+        self.ema_history[key] = smoothed
+        return int(round(smoothed)) if is_int else round(smoothed, precision)
+
+    def _apply_ema(self, data: dict) -> dict:
+        # CPU 核心指标滤波
+        cpu = data.get("cpu", {})
+        if "p_core_avg_load" in cpu:
+            cpu["p_core_avg_load"] = self._filter_val("cpu_p_load", cpu["p_core_avg_load"], 1)
+        if "e_core_avg_load" in cpu:
+            cpu["e_core_avg_load"] = self._filter_val("cpu_e_load", cpu["e_core_avg_load"], 1)
+        if "p_core_avg_clock_ghz" in cpu:
+            cpu["p_core_avg_clock_ghz"] = self._filter_val("cpu_p_clock", cpu["p_core_avg_clock_ghz"], 2)
+        if "e_core_avg_clock_ghz" in cpu:
+            cpu["e_core_avg_clock_ghz"] = self._filter_val("cpu_e_clock", cpu["e_core_avg_clock_ghz"], 2)
+        if "temp_hotspot" in cpu and cpu["temp_hotspot"] is not None:
+            cpu["temp_hotspot"] = self._filter_val("cpu_temp", cpu["temp_hotspot"], 1)
+        if "power_package_w" in cpu and cpu["power_package_w"] is not None:
+            cpu["power_package_w"] = self._filter_val("cpu_power", cpu["power_package_w"], 1)
+        if "volt_core_v" in cpu and cpu["volt_core_v"] is not None:
+            cpu["volt_core_v"] = self._filter_val("cpu_volt", cpu["volt_core_v"], 3)
+
+        # GPU 核心指标滤波
+        gpu = data.get("gpu", {})
+        if "load_core" in gpu:
+            gpu["load_core"] = self._filter_val("gpu_load", gpu["load_core"], 1)
+        if "temp_hotspot" in gpu and gpu["temp_hotspot"] is not None:
+            gpu["temp_hotspot"] = self._filter_val("gpu_temp_hotspot", gpu["temp_hotspot"], 1)
+        if "temp_core" in gpu and gpu["temp_core"] is not None:
+            gpu["temp_core"] = self._filter_val("gpu_temp_core", gpu["temp_core"], 1)
+        if "power_package_w" in gpu and gpu["power_package_w"] is not None:
+            gpu["power_package_w"] = self._filter_val("gpu_power", gpu["power_package_w"], 1)
+        if "clock_core_mhz" in gpu and gpu["clock_core_mhz"] is not None:
+            gpu["clock_core_mhz"] = self._filter_val("gpu_clock_core", gpu["clock_core_mhz"], 0, is_int=True)
+        if "clock_mem_mhz" in gpu and gpu["clock_mem_mhz"] is not None:
+            gpu["clock_mem_mhz"] = self._filter_val("gpu_clock_mem", gpu["clock_mem_mhz"], 0, is_int=True)
+        if "vram_used_gb" in gpu:
+            gpu["vram_used_gb"] = self._filter_val("gpu_vram_used", gpu["vram_used_gb"], 1)
+        if "vram_percent" in gpu:
+            gpu["vram_percent"] = self._filter_val("gpu_vram_percent", gpu["vram_percent"], 1)
+
+        # 内存滤波
+        overview = data.get("overview", {})
+        if "ram_used_gb" in overview:
+            overview["ram_used_gb"] = self._filter_val("ram_used", overview["ram_used_gb"], 1)
+        if "ram_percent" in overview:
+            overview["ram_percent"] = self._filter_val("ram_percent", overview["ram_percent"], 1)
+
+        return data
+
     def update(self) -> dict:
         """
         全量更新硬件传感器并提取 ui思路.txt 中指定的固定指标
@@ -248,7 +317,8 @@ class HardwareMonitor:
             except Exception:
                 pass
 
-        return data
+        # 应用一阶低通滤波 (EMA 平滑)
+        return self._apply_ema(data)
 
     def close(self):
         self.computer.Close()
