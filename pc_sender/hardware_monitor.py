@@ -55,9 +55,9 @@ class HardwareMonitor:
         except Exception:
             self.pdh_query = None
 
-        # 一阶低通滤波器配置 (方案 B: 历史权重 0.9 + 当前实测权重 0.1)
-        self.alpha_current = 0.1
-        self.alpha_history = 0.9
+        # 一阶低通滤波器配置 (方案 B: 历史权重 0.95 + 当前实测权重 0.05)
+        self.alpha_current = 0.05
+        self.alpha_history = 0.95
         self.ema_history = {}
 
     def _filter_val(self, key: str, val, precision: int = 1, is_int: bool = False):
