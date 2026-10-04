@@ -229,7 +229,13 @@ public class MainActivity extends Activity {
 
                         if (ov.has("fps") && !ov.isNull("fps")) {
                             int rawFps = ov.getInt("fps");
+                            if (rawFps > 200) {
+                                rawFps = 200;
+                            }
                             int filteredFps = (int) Math.round(filterEma("fps", (double) rawFps));
+                            if (filteredFps > 200) {
+                                filteredFps = 200;
+                            }
                             tvFps.setText(String.valueOf(filteredFps));
                         } else {
                             tvFps.setText("--");
@@ -237,7 +243,13 @@ public class MainActivity extends Activity {
 
                         if (ov.has("fps_low") && !ov.isNull("fps_low")) {
                             int rawLow = ov.getInt("fps_low");
+                            if (rawLow > 200) {
+                                rawLow = 200;
+                            }
                             int filteredLow = (int) Math.round(filterEma("fps_low", (double) rawLow));
+                            if (filteredLow > 200) {
+                                filteredLow = 200;
+                            }
                             tvFpsLow.setText(String.valueOf(filteredLow));
                         } else {
                             tvFpsLow.setText("--");

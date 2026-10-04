@@ -265,13 +265,15 @@ class HardwareMonitor:
 
                         if stype == "Factor" and sname == "Fullscreen FPS":
                             if val > 0:
+                                val = min(200.0, val)
                                 data["overview"]["is_gaming"] = True
                                 data["overview"]["fps"] = int(val)
                                 self.fps_history.append(val)
                                 # 计算 1% Low FPS
                                 sorted_fps = sorted(self.fps_history)
                                 low_idx = max(1, int(len(sorted_fps) * 0.01))
-                                data["overview"]["fps_low"] = int(sum(sorted_fps[:low_idx]) / low_idx)
+                                low_val = int(sum(sorted_fps[:low_idx]) / low_idx)
+                                data["overview"]["fps_low"] = min(200, low_val)
 
                         elif stype == "Temperature":
                             if sname == "GPU Hot Spot":
