@@ -32,9 +32,9 @@ import java.util.UUID;
 public class MainActivity extends Activity {
     private static final String TAG = "PCMonitor";
 
-    // 一阶低通滤波 (EMA) 算法: 显示值 = 历史值 * 0.95 + 当前值 * 0.05
-    private static final double ALPHA_HISTORY = 0.95;
-    private static final double ALPHA_CURRENT = 0.05;
+    // 一阶低通滤波 (EMA) 算法: 显示值 = 历史值 * 0.85 + 当前值 * 0.15
+    private static final double ALPHA_HISTORY = 0.85;
+    private static final double ALPHA_CURRENT = 0.15;
     private final Map<String, Double> emaHistory = new HashMap<>();
 
     private double filterEma(String key, double currentVal) {
