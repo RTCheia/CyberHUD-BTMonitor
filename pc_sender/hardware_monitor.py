@@ -115,8 +115,38 @@ class HardwareMonitor:
         if "vram_percent" in gpu:
             gpu["vram_percent"] = self._filter_val("gpu_vram_percent", gpu["vram_percent"], 1)
 
-        # 内存滤波
+        # Overview (FPS / NET / RAM) 滤波
         overview = data.get("overview", {})
+        if overview.get("fps") is not None:
+            overview["fps"] = self._filter_val("fps", overview["fps"], 0, is_int=True)
+        if overview.get("fps_low") is not None:
+            overview["fps_low"] = self._filter_val("fps_low", overview["fps_low"], 0, is_int=True)
+
+        # 网络上下行速度平滑
+        def _smooth_net(net_str, key):
+            if not net_str: return "0 KB/s"
+            try:
+                s = net_str.strip()
+                kb = 0.0
+                if s.endswith("MB/s"):
+                    kb = float(s.replace("MB/s", "").trim()) * 1024.0
+                elif s.endswith("KB/s"):
+                    kb = float(s.replace("KB/s", "").trim())
+                elif s.endswith("B/s"):
+                    kb = float(s.replace("B/s", "").trim()) / 1024.0
+                smoothed_kb = self._filter_val(key, kb, 1)
+                if smoothed_kb >= 1024.0:
+                    return f"{smoothed_kb / 1024.0:.1f} MB/s"
+                else:
+                    return f"{max(0.0, smoothed_kb):.0f} KB/s"
+            except Exception:
+                return net_str
+
+        if "net_down_str" in overview:
+            overview["net_down_str"] = _smooth_net(overview["net_down_str"], "net_down_kb")
+        if "net_up_str" in overview:
+            overview["net_up_str"] = _smooth_net(overview["net_up_str"], "net_up_kb")
+
         if "ram_used_gb" in overview:
             overview["ram_used_gb"] = self._filter_val("ram_used", overview["ram_used_gb"], 1)
         if "ram_percent" in overview:

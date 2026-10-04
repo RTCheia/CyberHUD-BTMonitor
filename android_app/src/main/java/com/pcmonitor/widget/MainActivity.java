@@ -49,6 +49,30 @@ public class MainActivity extends Activity {
         return smoothed;
     }
 
+    private double parseNetSpeedKb(String netStr) {
+        if (netStr == null || netStr.trim().isEmpty()) return 0.0;
+        try {
+            String s = netStr.trim();
+            if (s.endsWith("MB/s")) {
+                double mb = Double.parseDouble(s.replace("MB/s", "").trim());
+                return mb * 1024.0;
+            } else if (s.endsWith("KB/s")) {
+                return Double.parseDouble(s.replace("KB/s", "").trim());
+            } else if (s.endsWith("B/s")) {
+                return Double.parseDouble(s.replace("B/s", "").trim()) / 1024.0;
+            }
+        } catch (Exception ignored) {}
+        return 0.0;
+    }
+
+    private String formatNetSpeed(double kb) {
+        if (kb >= 1024.0) {
+            return String.format(Locale.US, "%.1f MB/s", kb / 1024.0);
+        } else {
+            return String.format(Locale.US, "%.0f KB/s", Math.max(0.0, kb));
+        }
+    }
+
     // 标准蓝牙串口服务 SPP UUID
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final String SERVICE_NAME = "PC_MONITOR";
@@ -204,19 +228,27 @@ public class MainActivity extends Activity {
                         JSONObject ov = data.getJSONObject("overview");
 
                         if (ov.has("fps") && !ov.isNull("fps")) {
-                            tvFps.setText(String.valueOf(ov.getInt("fps")));
+                            int rawFps = ov.getInt("fps");
+                            int filteredFps = (int) Math.round(filterEma("fps", (double) rawFps));
+                            tvFps.setText(String.valueOf(filteredFps));
                         } else {
                             tvFps.setText("--");
                         }
 
                         if (ov.has("fps_low") && !ov.isNull("fps_low")) {
-                            tvFpsLow.setText(String.valueOf(ov.getInt("fps_low")));
+                            int rawLow = ov.getInt("fps_low");
+                            int filteredLow = (int) Math.round(filterEma("fps_low", (double) rawLow));
+                            tvFpsLow.setText(String.valueOf(filteredLow));
                         } else {
                             tvFpsLow.setText("--");
                         }
 
-                        tvNetDown.setText(ov.optString("net_down_str", "0 KB/s"));
-                        tvNetUp.setText(ov.optString("net_up_str", "0 KB/s"));
+                        double dlKb = parseNetSpeedKb(ov.optString("net_down_str", "0 KB/s"));
+                        double ulKb = parseNetSpeedKb(ov.optString("net_up_str", "0 KB/s"));
+                        double filteredDlKb = filterEma("net_down_kb", dlKb);
+                        double filteredUlKb = filterEma("net_up_kb", ulKb);
+                        tvNetDown.setText(formatNetSpeed(filteredDlKb));
+                        tvNetUp.setText(formatNetSpeed(filteredUlKb));
 
                         double ramUsed = filterEma("ram_used", ov.optDouble("ram_used_gb", 0.0));
                         double ramPct = filterEma("ram_percent", ov.optDouble("ram_percent", 0.0));
